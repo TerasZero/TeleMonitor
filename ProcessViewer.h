@@ -1,6 +1,7 @@
 #include <vector>
 #include <cstdint>
-
+#include <iostream>
+using namespace std;
 
 
 //process stats
@@ -17,7 +18,7 @@ class procMonitor{
 	
 	public:
 	//collecting the proc info
-	void collectInfo();
+		void collectInfo();
 };
 
 
