@@ -10,11 +10,11 @@ typedef struct procStats{
 	char* name;
 	uint64_t cpuTime;
 	uint64_t memUsage;
-}procStat;
+}procStats;
 
 class procMonitor{
 	private:
-		vector<procStat> processes;
+		vector<procStats> processes;
 	
 	public:
 	//collecting the proc info
