@@ -4,10 +4,12 @@
 //Enumerates all processes through /proc and stores the pid's in processes vector
 void procMonitor::collectInfo(){
 	DIR *dirH;
+	DIR *dirP;
 	struct dirent *entries;
 	//look throuh /proc to find running processes
 	dirH = opendir("/proc");
 	bool isProc = true;
+	
 	if(dirH == NULL){
 		return;
 	}
@@ -29,6 +31,18 @@ void procMonitor::collectInfo(){
 			cout <<"testtt" <<endl;
 			proc.pid = currPid;
 			processes.push_back(proc);
+			dirP = opendir(pidStr);
+			if(dirP == NULL){
+				return;
+			}
+			entriesP = readdir(dirP);
+			while(entriesP != NULL){
+				if(entriesP->d_name == "source"){
+					
+				}
+				entriesP = readdir(dirP);
+			}
+			
 		}
 		entries = readdir(dirH);
 	}
