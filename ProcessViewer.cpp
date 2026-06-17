@@ -30,24 +30,35 @@ void procMonitor::collectInfo(){
 			cout << pidStr << endl;
 			cout <<"testtt" <<endl;
 			proc.pid = currPid;
-			processes.push_back(proc);
-			dirP = opendir(pidStr);
-			if(dirP == NULL){
-				return;
-			}
-			entriesP = readdir(dirP);
-			while(entriesP != NULL){
-				if(entriesP->d_name == "source"){
-					
-				}
-				entriesP = readdir(dirP);
-			}
 			
-		}
-		entries = readdir(dirH);
-	}
-	cout << processes.size() << "hello size "<< endl;
-	closedir(dirH);
+			string statusPath = "/proc/" + pidStr + "/status";
+			ifstream statusFile(statusPath); //file that contains proc info
+			if(statusFile.is_open()){
+				string statLine;
+				while(getline(statusFile,statLine)){
+					stringstream stringS(statLine); //temp stream
+					string token;
+					
+					stringS >>token; //first word, usually its name
+					if(token == "Name:"){
+						stringS >>proc.name;
+					}
+					else if(token == "VmRSS:"){
+						int mem;
+						string sizeUnit;
+						stringS >>mem>>sizeUnit;
+						proc.memUsage = to_string(mem) + " " + sizeUnit;
+            				} 
+        			}
+        			statusFile.close();
+        		}
+        		processes.push_back(proc);
+        	}
+        	entries = readdir(dirH);
+        }
+        cout << "Total amount :" << processes.size() << endl;
+	closedir(dirH);     
+        	
 }
 
 int main(){
