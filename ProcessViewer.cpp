@@ -4,7 +4,6 @@
 //Enumerates all processes through /proc and stores the pid's in processes vector
 void procMonitor::collectInfo(){
 	DIR *dirH;
-	DIR *dirP;
 	struct dirent *entries;
 	//look throuh /proc to find running processes
 	dirH = opendir("/proc");
@@ -47,7 +46,7 @@ void procMonitor::collectInfo(){
 						int mem;
 						string sizeUnit;
 						stringS >>mem>>sizeUnit;
-						proc.memUsage = to_string(mem) + " " + sizeUnit;
+						proc.memUsage = mem;
             				} 
         			}
         			statusFile.close();
