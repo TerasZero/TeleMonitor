@@ -9,9 +9,10 @@ using namespace std;
 //process stats
 typedef struct procStats{
 	int pid;
-	char* name;
+	string name;
 	uint64_t cpuTime;
 	uint64_t memUsage;
+	string curState; //running, sleeping, zombie, etc
 }procStats;
 
 class procMonitor{

@@ -27,7 +27,7 @@ void procMonitor::collectInfo(){
 			procStats proc;
 			int currPid = stoi(pidStr);
 			cout << pidStr << endl;
-			cout <<"testtt" <<endl;
+
 			proc.pid = currPid;
 			
 			string statusPath = "/proc/" + pidStr + "/status";
@@ -47,15 +47,20 @@ void procMonitor::collectInfo(){
 						string sizeUnit;
 						stringS >>mem>>sizeUnit;
 						proc.memUsage = mem;
-            				} 
-        			}
-        			statusFile.close();
+            		}
+					else if(token == "State:"){
+						stringS >>proc.curState;
+					}
+						
         		}
-        		processes.push_back(proc);
+        		statusFile.close();
         	}
-        	entries = readdir(dirH);
+			cout << proc.pid << " " << proc.name << " " << proc.memUsage << " " << proc.curState << endl;
+        	processes.push_back(proc);
         }
-        cout << "Total amount :" << processes.size() << endl;
+        entries = readdir(dirH);
+    }
+    cout << "Total amount :" << processes.size() << endl;
 	closedir(dirH);     
         	
 }
