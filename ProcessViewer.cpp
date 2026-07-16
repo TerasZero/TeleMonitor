@@ -23,19 +23,19 @@ void procMonitor::collectInfo(){
 				isProc = false;
 			}
 		}
-		if(isProc){//enters in the procs pid as a int
+		if(isProc){
 			procStats proc;
 			int currPid = stoi(pidStr);
 			cout << pidStr << endl;
 
 			proc.pid = currPid;
-			
+			//info from status file (human readable info: name, state, memory usage)
 			string statusPath = "/proc/" + pidStr + "/status";
 			ifstream statusFile(statusPath); //file that contains proc info
 			if(statusFile.is_open()){
-				string statLine;
-				while(getline(statusFile,statLine)){
-					stringstream stringS(statLine); //temp stream
+				string statusLine;
+				while(getline(statusFile,statusLine)){
+					stringstream stringS(statusLine); //temp stream
 					string token;
 					
 					stringS >>token; //first word, usually its name
@@ -50,12 +50,29 @@ void procMonitor::collectInfo(){
             		}
 					else if(token == "State:"){
 						stringS >>proc.curState;
-					}
-						
+					}	
         		}
         		statusFile.close();
+			}
+
+			//statfile contains cpu time info, and other 
+			string statPath = "/proc/" + pidStr + "/stat";
+			ifstream statFile(statPath);
+			if(statFile.is_open()){
+				string statLine;
+				getline(statFile,statLine);
+				stringstream stringS(statLine);
+				string token;
+				int count = 0;
+				while(stringS >> token){
+					count++;
+					if(count == 14 || count == 15){
+						proc.cpuTime += stoi(token); //line 14: utime(user time) +line 15: stime(system time)
+					}
+				}
+				statFile.close();
         	}
-			cout << proc.pid << " " << proc.name << " " << proc.memUsage << " " << proc.curState << endl;
+			cout << proc.pid << " " << proc.name << " " << proc.memUsage << " " << proc.cpuTime << " " << proc.curState << endl;
         	processes.push_back(proc);
         }
         entries = readdir(dirH);
