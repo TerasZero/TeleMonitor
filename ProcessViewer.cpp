@@ -17,7 +17,7 @@ void procMonitor::collectInfo(){
 		isProc = true;
 		string pidStr = entries-> d_name;
 		//auto iterate through each char in pid
-		for(char c :pidStr){//filters out any dir with letters (proc dir are named by pid)
+		for(char c :pidStr){//filters out any directory with letters (proc dir are named by pid)
 		//so filter out entries with letters "cpuinfo..."=non processes
 			if(!isdigit(c)){
 				isProc = false;
@@ -26,8 +26,6 @@ void procMonitor::collectInfo(){
 		if(isProc){
 			procStats proc;
 			int currPid = stoi(pidStr);
-			cout << pidStr << endl;
-
 			proc.pid = currPid;
 			//info from status file (human readable info: name, state, memory usage)
 			string statusPath = "/proc/" + pidStr + "/status";
@@ -59,12 +57,14 @@ void procMonitor::collectInfo(){
 			string statPath = "/proc/" + pidStr + "/stat";
 			ifstream statFile(statPath);
 			if(statFile.is_open()){
+				proc.cpuTime = 0;
 				string statLine;
 				getline(statFile,statLine);
 				stringstream stringS(statLine);
 				string token;
 				int count = 0;
 				while(stringS >> token){
+					//cout << count << ": " << token << endl;
 					count++;
 					if(count == 14 || count == 15){
 						proc.cpuTime += stoi(token); //line 14: utime(user time) +line 15: stime(system time)
@@ -72,18 +72,32 @@ void procMonitor::collectInfo(){
 				}
 				statFile.close();
         	}
-			cout << proc.pid << " " << proc.name << " " << proc.memUsage << " " << proc.cpuTime << " " << proc.curState << endl;
         	processes.push_back(proc);
         }
         entries = readdir(dirH);
     }
-    cout << "Total amount :" << processes.size() << endl;
 	closedir(dirH);     
         	
+}
+
+void procMonitor::printInfo(){
+	for(procStats proc: processes){
+		cout << "PID: " << proc.pid << ", Name: " << proc.name << ", Memory Usage: " << proc.memUsage << ", CPU Time: " << proc.cpuTime << ", State: " << proc.curState << endl;
+	}
+	cout << "Total amount :" << processes.size() << endl;
+}
+
+bool comparePid(procStats& a, procStats& b){
+	return a.pid < b.pid;
+}
+
+void procMonitor::sortPid(){
+	sort(processes.begin(),processes.end(),comparePid); 
 }
 
 int main(){
 	procMonitor mon1;
 	mon1.collectInfo();
+	mon1.printInfo();
 	return 0;
 }

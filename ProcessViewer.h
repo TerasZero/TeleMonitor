@@ -3,6 +3,7 @@
 #include <sstream>
 #include <iostream>
 #include <fstream>
+#include <algorithm>
 using namespace std;
 
 
@@ -20,8 +21,15 @@ class procMonitor{
 		vector<procStats> processes;
 	
 	public:
-	//collecting the proc info
+	//collecting the proc info and printing info
 		void collectInfo();
+		void printInfo();
+	
+	//sort types
+		void sortPid();
+		void sortName();
+		void sortMemUsage();
+		void sortCpuTime();
 };
 
 
