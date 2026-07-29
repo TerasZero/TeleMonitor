@@ -3,6 +3,7 @@
 
 //Enumerates all processes through /proc and stores the pid's in processes vector
 void procMonitor::collectInfo(){
+	processes.clear(); //safe to call multiple times
 	DIR *dirH;
 	struct dirent *entries;
 	//look throuh /proc to find running processes
@@ -67,7 +68,7 @@ void procMonitor::collectInfo(){
 					//cout << count << ": " << token << endl;
 					count++;
 					if(count == 14 || count == 15){
-						proc.cpuTime += stoi(token); //line 14: utime(user time) +line 15: stime(system time)
+						proc.cpuTime += stoi(token); //14: utime(user time) + 15: stime(system time)
 					}
 				}
 				statFile.close();
@@ -87,17 +88,68 @@ void procMonitor::printInfo(){
 	cout << "Total amount :" << processes.size() << endl;
 }
 
-bool comparePid(procStats& a, procStats& b){
+//sort by pid, mem, and cpu time.
+
+//Usually, the size of pid indicates the age of processes. so might be useful ¯\_(ツ)_/¯
+bool comparePid(const procStats& a, const procStats& b){
 	return a.pid < b.pid;
+}
+
+bool compareMemUsage(const procStats& a, const procStats& b){
+	return a.memUsage > b.memUsage;
+}
+
+bool compareCpuTime(const procStats& a, const procStats& b){
+	return a.cpuTime > b.cpuTime;
 }
 
 void procMonitor::sortPid(){
 	sort(processes.begin(),processes.end(),comparePid); 
 }
 
+void procMonitor::sortMemUsage(){
+	sort(processes.begin(),processes.end(),compareMemUsage); 
+}
+
+void procMonitor::sortCpuTime(){
+	sort(processes.begin(),processes.end(),compareCpuTime); 
+}
+
+void menuOption(procMonitor& mon){
+	int choice;
+	while(true){
+		cout << "Choose an option to sort the processes: " << endl;
+		cout << "1. Sort by PID" << endl;
+		cout << "2. Sort by Memory Usage" << endl;
+		cout << "3. Sort by CPU Time" << endl;
+		cin >> choice;
+		switch(choice){
+			case 1:
+				mon.sortPid();
+				mon.printInfo();
+				break;
+			case 2:
+				mon.sortMemUsage();
+				mon.printInfo();
+				break;
+			case 3:
+				mon.sortCpuTime();
+				mon.printInfo();
+				break;
+			case 4:
+				cout << "Exiting" << endl;
+				exit(0);
+			default:
+				cout << "Invalid choice" << endl;
+				break;
+		}
+		
+	}
+}
+
 int main(){
 	procMonitor mon1;
 	mon1.collectInfo();
-	mon1.printInfo();
+	menuOption(mon1);
 	return 0;
 }

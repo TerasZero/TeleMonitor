@@ -6,7 +6,6 @@
 #include <algorithm>
 using namespace std;
 
-
 //process stats
 typedef struct procStats{
 	int pid;
