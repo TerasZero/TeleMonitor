@@ -2,7 +2,7 @@ CXX = g++
 CXXFLAGS = -Wall -Wextra -Werror -g
 
 TARGET = telemonitor
-SOURCES = main.cpp ProcessViewer.cpp
+SOURCES = ProcessViewer.cpp
 
 all:
 	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SOURCES)
