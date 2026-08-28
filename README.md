@@ -1,4 +1,4 @@
-# Teleonitor
+# TeleMonitor
 
 ## Desciption
 Linux process monitor thats written in C++.
