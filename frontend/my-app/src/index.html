@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' ws://localhost:*; img-src 'self' data:; object-src 'none'; base-uri 'none'" />
+    <title>TeleMonitor</title>
+  </head>
+  <body>
+    <header>
+      <div><p class="eyebrow">SYSTEM / PROCESSES</p><h1>TeleMonitor<span class="mark" aria-hidden="true">_</span></h1></div>
+      <span class="platform">LINUX</span>
+    </header>
+    <main>
+      <div class="toolbar"><p id="status" role="status">Starting collector…</p><span id="count">— processes</span></div>
+      <div class="table-wrap" tabindex="0" role="region" aria-label="Process table">
+        <table>
+          <caption class="sr-only">Live Linux processes. Use column buttons to sort.</caption>
+          <thead><tr>
+            <th scope="col" aria-sort="none"><button data-column="pid">PID</button></th>
+            <th scope="col" aria-sort="none"><button data-column="name">Process</button></th>
+            <th scope="col" aria-sort="descending"><button data-column="cpuPercent">CPU %</button></th>
+            <th scope="col" aria-sort="none"><button data-column="memoryMiB">Memory · MiB</button></th>
+            <th scope="col" aria-sort="none"><button data-column="state">State</button></th>
+          </tr></thead>
+          <tbody><tr><td colspan="5">Waiting for the first sample…</td></tr></tbody>
+        </table>
+      </div>
+    </main>
+    <footer><span>100% CPU = one core</span><span>— = unavailable or awaiting a second sample</span></footer>
+  </body>
+</html>

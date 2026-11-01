@@ -1,155 +1,172 @@
 #include "ProcessViewer.h"
+#include <algorithm>
 #include <dirent.h>
+#include <fstream>
+#include <iomanip>
+#include <limits>
+#include <sstream>
+#include <stdexcept>
+#include <unordered_map>
+#include <unistd.h>
 
-//Enumerates all processes through /proc and stores the pid's in processes vector
-void procMonitor::collectInfo(){
-	processes.clear(); //safe to call multiple times
-	DIR *dirH;
-	struct dirent *entries;
-	//look throuh /proc to find running processes
-	dirH = opendir("/proc");
-	bool isProc = true;
-	
-	if(dirH == NULL){
-		return;
-	}
-	entries = readdir(dirH);
-	while(entries != NULL){
-		isProc = true;
-		string pidStr = entries-> d_name;
-		//auto iterate through each char in pid
-		for(char c :pidStr){//filters out any directory with letters (proc dir are named by pid)
-		//so filter out entries with letters "cpuinfo..."=non processes
-			if(!isdigit(c)){
-				isProc = false;
-			}
-		}
-		if(isProc){
-			procStats proc;
-			int currPid = stoi(pidStr);
-			proc.pid = currPid;
-			//info from status file (human readable info: name, state, memory usage)
-			string statusPath = "/proc/" + pidStr + "/status";
-			ifstream statusFile(statusPath); //file that contains proc info
-			if(statusFile.is_open()){
-				string statusLine;
-				while(getline(statusFile,statusLine)){
-					stringstream stringS(statusLine); //temp stream
-					string token;
-					
-					stringS >>token; //first word, usually its name
-					if(token == "Name:"){
-						stringS >>proc.name;
-					}
-					else if(token == "VmRSS:"){
-						int mem;
-						string sizeUnit;
-						stringS >>mem>>sizeUnit;
-						proc.memUsage = mem;
-            		}
-					else if(token == "State:"){
-						stringS >>proc.curState;
-					}	
-        		}
-        		statusFile.close();
-			}
+namespace {
+bool readUnsigned(const std::string& text, uint64_t& value) {
+    if (text.empty() || text.find_first_not_of("0123456789") != std::string::npos)
+        return false;
+    std::istringstream input(text);
+    return static_cast<bool>(input >> value);
+}
 
-			//statfile contains cpu time info, and other 
-			string statPath = "/proc/" + pidStr + "/stat";
-			ifstream statFile(statPath);
-			if(statFile.is_open()){
-				proc.cpuTime = 0;
-				string statLine;
-				getline(statFile,statLine);
-				stringstream stringS(statLine);
-				string token;
-				int count = 0;
-				while(stringS >> token){
-					//cout << count << ": " << token << endl;
-					count++;
-					if(count == 14 || count == 15){
-						proc.cpuTime += stoi(token); //14: utime(user time) + 15: stime(system time)
-					}
-				}
-				statFile.close();
-        	}
-        	processes.push_back(proc);
-        }
-        entries = readdir(dirH);
+void writeString(std::ostream& out, const std::string& text) {
+    const char* hex = "0123456789abcdef";
+    out << '"';
+    for (unsigned char c : text) {
+        if (c == '"' || c == '\\') out << '\\' << c;
+        else if (c < 32 || c == 127)
+            out << "\\u00" << hex[c >> 4] << hex[c & 15];
+        else out << c;
     }
-	closedir(dirH);     
-        	
+    out << '"';
+}
 }
 
-void procMonitor::printInfo(){
-	for(procStats proc: processes){
-		cout << "PID: " << proc.pid << ", Name: " << proc.name << ", Memory Usage: " << proc.memUsage << ", CPU Time: " << proc.cpuTime << ", State: " << proc.curState << endl;
-	}
-	cout << "Total amount :" << processes.size() << endl;
+bool parseStat(const std::string& text, procStats& proc) {
+    const auto open = text.find('(');
+    const auto close = text.rfind(')'); // Linux process names can themselves contain ')'.
+    if (open == std::string::npos || close == std::string::npos || close <= open)
+        return false;
+    procStats parsed;
+    std::istringstream pidInput(text.substr(0, open));
+    if (!(pidInput >> parsed.pid) || parsed.pid <= 0) return false;
+    pidInput >> std::ws;
+    if (!pidInput.eof()) return false;
+    parsed.name = text.substr(open + 1, close - open - 1);
+    std::istringstream fields(text.substr(close + 1));
+    if (!(fields >> parsed.curState) || parsed.curState.size() != 1) return false;
+    uint64_t user = 0, system = 0;
+    std::string token;
+    for (int field = 4; field <= 22; ++field) {
+        if (!(fields >> token)) return false;
+        if (field == 14 && !readUnsigned(token, user)) return false;
+        if (field == 15 && !readUnsigned(token, system)) return false;
+        if (field == 22 && !readUnsigned(token, parsed.startTime)) return false;
+    }
+    if (user > std::numeric_limits<uint64_t>::max() - system) return false;
+    parsed.cpuTime = user + system;
+    proc = parsed;
+    return true;
 }
 
-//sort by pid, mem, and cpu time.
-
-//Usually, the size of pid indicates the age of processes. so might be useful ¯\_(ツ)_/¯
-bool comparePid(const procStats& a, const procStats& b){
-	return a.pid < b.pid;
+void parseMemory(std::istream& status, procStats& proc) {
+    proc.hasMemory = false;
+    proc.memUsage = 0;
+    std::string line;
+    while (std::getline(status, line)) {
+        std::istringstream fields(line);
+        std::string label, amount, unit;
+        if (fields >> label && label == "VmRSS:") {
+            proc.hasMemory = (fields >> amount >> unit) && unit == "kB"
+                && readUnsigned(amount, proc.memUsage);
+            return;
+        }
+    }
 }
 
-bool compareMemUsage(const procStats& a, const procStats& b){
-	return a.memUsage > b.memUsage;
+void calculateCpu(procStats& current, const procStats& previous, long ticksPerSecond) {
+    current.hasCpu = false;
+    current.cpuPercent = 0;
+    const double seconds = std::chrono::duration<double>(current.sampledAt - previous.sampledAt).count();
+    if (current.pid != previous.pid || current.startTime != previous.startTime
+        || current.cpuTime < previous.cpuTime || seconds <= 0 || ticksPerSecond <= 0) return;
+    current.cpuPercent = 100.0 * (current.cpuTime - previous.cpuTime) / ticksPerSecond / seconds;
+    current.hasCpu = true;
 }
 
-bool compareCpuTime(const procStats& a, const procStats& b){
-	return a.cpuTime > b.cpuTime;
+void procMonitor::collectInfo() {
+    const long ticksPerSecond = sysconf(_SC_CLK_TCK);
+    if (ticksPerSecond <= 0) throw std::runtime_error("Cannot read the system clock tick rate");
+    DIR* directory = opendir("/proc");
+    if (!directory) throw std::runtime_error("Cannot open /proc; run TeleMonitor on Linux");
+    std::vector<std::string> pids;
+    while (auto* entry = readdir(directory)) {
+        const std::string pid(entry->d_name);
+        if (!pid.empty() && pid.find_first_not_of("0123456789") == std::string::npos)
+            pids.push_back(pid);
+    }
+    closedir(directory);
+    std::unordered_map<int, procStats> previous;
+    for (const auto& proc : processes) previous.emplace(proc.pid, proc);
+    processes.clear();
+    for (const auto& pid : pids) {
+        const std::string base = "/proc/" + pid;
+        std::ifstream stat(base + "/stat");
+        std::ostringstream text;
+        text << stat.rdbuf();
+        procStats proc;
+        if (!stat || !parseStat(text.str(), proc) || std::to_string(proc.pid) != pid) continue;
+        proc.sampledAt = std::chrono::steady_clock::now();
+        std::ifstream status(base + "/status");
+        parseMemory(status, proc);
+        // Verify identity again because the PID may be reused between file reads.
+        std::ifstream check(base + "/stat");
+        std::ostringstream checkText;
+        checkText << check.rdbuf();
+        procStats identity;
+        if (!check || !parseStat(checkText.str(), identity)
+            || identity.pid != proc.pid || identity.startTime != proc.startTime) continue;
+        const auto old = previous.find(proc.pid);
+        if (old != previous.end()) calculateCpu(proc, old->second, ticksPerSecond);
+        processes.push_back(proc);
+    }
 }
 
-void procMonitor::sortPid(){
-	sort(processes.begin(),processes.end(),comparePid); 
+void procMonitor::sortPid() {
+    std::sort(processes.begin(), processes.end(), [](const procStats& a, const procStats& b) {
+        return a.pid < b.pid;
+    });
+}
+void procMonitor::sortMemUsage() {
+    std::sort(processes.begin(), processes.end(), [](const procStats& a, const procStats& b) {
+        if (a.hasMemory != b.hasMemory) return a.hasMemory;
+        return a.memUsage != b.memUsage ? a.memUsage > b.memUsage : a.pid < b.pid;
+    });
+}
+void procMonitor::sortCpuUsage() {
+    std::sort(processes.begin(), processes.end(), [](const procStats& a, const procStats& b) {
+        if (a.hasCpu != b.hasCpu) return a.hasCpu;
+        return a.cpuPercent != b.cpuPercent ? a.cpuPercent > b.cpuPercent : a.pid < b.pid;
+    });
 }
 
-void procMonitor::sortMemUsage(){
-	sort(processes.begin(),processes.end(),compareMemUsage); 
+void procMonitor::printInfo(std::ostream& out) const {
+    out << "PID\tCPU %\tMiB\tSTATE\tNAME\n" << std::fixed << std::setprecision(1);
+    for (const auto& proc : processes) {
+        out << proc.pid << '\t';
+        if (proc.hasCpu) out << proc.cpuPercent; else out << '-';
+        out << '\t';
+        if (proc.hasMemory) out << proc.memUsage / 1024.0; else out << '-';
+        out << '\t' << proc.curState << '\t';
+        writeString(out, proc.name);
+        out << '\n';
+    }
+    out << processes.size() << " processes. CPU: 100% = one core. '-' = unavailable.\n";
 }
 
-void procMonitor::sortCpuTime(){
-	sort(processes.begin(),processes.end(),compareCpuTime); 
-}
-
-void menuOption(procMonitor& mon){
-	int choice;
-	while(true){
-		cout << "Choose an option to sort the processes: " << endl;
-		cout << "1. Sort by PID" << endl;
-		cout << "2. Sort by Memory Usage" << endl;
-		cout << "3. Sort by CPU Time" << endl;
-		cin >> choice;
-		switch(choice){
-			case 1:
-				mon.sortPid();
-				mon.printInfo();
-				break;
-			case 2:
-				mon.sortMemUsage();
-				mon.printInfo();
-				break;
-			case 3:
-				mon.sortCpuTime();
-				mon.printInfo();
-				break;
-			case 4:
-				cout << "Exiting" << endl;
-				exit(0);
-			default:
-				cout << "Invalid choice" << endl;
-				break;
-		}
-		
-	}
-}
-
-int main(){
-	procMonitor mon1;
-	mon1.collectInfo();
-	menuOption(mon1);
-	return 0;
+void procMonitor::printJson(std::ostream& out) const {
+    out << "{\"processes\":[" << std::fixed << std::setprecision(2);
+    bool first = true;
+    for (const auto& proc : processes) {
+        if (!first) out << ',';
+        first = false;
+        out << "{\"pid\":" << proc.pid << ",\"name\":";
+        writeString(out, proc.name);
+        out << ",\"state\":";
+        writeString(out, proc.curState);
+        out << ",\"cpuPercent\":";
+        if (proc.hasCpu) out << proc.cpuPercent; else out << "null";
+        out << ",\"memoryMiB\":";
+        if (proc.hasMemory) out << proc.memUsage / 1024.0; else out << "null";
+        out << '}';
+    }
+    out << "]}\n" << std::flush;
 }
